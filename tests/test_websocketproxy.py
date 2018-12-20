@@ -19,6 +19,7 @@
 import unittest
 import unittest
 import socket
+import jwt
 
 from mox3 import stubout
 
@@ -124,6 +125,32 @@ class ProxyRequestHandlerTestCase(unittest.TestCase):
 
         self.assertEqual(self.handler.server.target_host, "somehost")
         self.assertEqual(self.handler.server.target_port, "blah")
+
+    def test_jwt_token_plugin(self):
+        private_key = open("./tests/jwt_rsa").read()
+        jwt_token = jwt.encode({'host': "remote_host", 'port': "remote_port"}, private_key, algorithm='RS256')
+        self.handler.path = "https://localhost:6080/websockify?token={jwt_token}".format(jwt_token=jwt_token)
+
+        self.stubs.Set(websocketproxy.ProxyRequestHandler, 'send_auth_error',
+                       staticmethod(lambda *args, **kwargs: None))
+
+        self.handler.server.token_plugin = token_plugins.JWTTokenApi("./tests/jwt_rsa.pub")
+        self.handler.validate_connection()
+
+        self.assertEqual(self.handler.server.target_host, "remote_host")
+        self.assertEqual(self.handler.server.target_port, "remote_port")
+    
+    def test_jwt_token_plugin_with_illigal_key_exception(self):
+        private_key = open("./tests/jwt_rsa").read()
+        jwt_token = jwt.encode({'host': "remote_host", 'port': "remote_port"}, private_key, algorithm='RS256')
+        self.handler.path = "https://localhost:6080/websockify?token={jwt_token}".format(jwt_token=jwt_token)
+
+        self.stubs.Set(websocketproxy.ProxyRequestHandler, 'send_auth_error',
+                       staticmethod(lambda *args, **kwargs: None))
+
+        self.handler.server.token_plugin = token_plugins.JWTTokenApi("wrong.pub")
+        self.assertRaises(self.handler.server.EClose, 
+                          self.handler.validate_connection)
 
     def test_auth_plugin(self):
         class TestPlugin(auth_plugins.BasePlugin):

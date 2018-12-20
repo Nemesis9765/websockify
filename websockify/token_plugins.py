@@ -87,3 +87,19 @@ class JSONTokenApi(BaseTokenAPI):
     def process_result(self, resp):
         resp_json = resp.json()
         return (resp_json['host'], resp_json['port'])
+
+
+class JWTTokenApi(BasePlugin):
+    # source is a JWT-token, with hostname and port included
+    # this JWT is validated against a assymetric key, if provided else, nothing is checked!
+
+    def lookup(self, token):
+        import jwt
+
+        try:
+            public_key = open(self.source).read()
+            parsed = jwt.decode(token, public_key, algorithms="RS256")
+
+            return (parsed['host'], parsed['port'])
+        except:
+            return None
