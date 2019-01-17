@@ -87,3 +87,45 @@ class JSONTokenApi(BaseTokenAPI):
     def process_result(self, resp):
         resp_json = resp.json()
         return (resp_json['host'], resp_json['port'])
+
+
+class JWTTokenApi(BasePlugin):
+    # source is a JWT-token, with hostname and port included
+    # Both JWS as JWE tokens are accepted. With regards to JWE tokens, the key is re-used for both validation and decryption.
+
+    def lookup(self, token):
+        from jwcrypto import jwt
+        import json
+
+        key = jwt.JWK()
+        
+        try:
+            with open(self.source) as key_file:
+                key_data = key_file.read()
+        except Exception as e:
+            print >>sys.stderr, "Error loading key file: %s" % (e)
+            return None
+
+        try:
+            key.import_from_pem(key_data)
+        except:
+            try:
+                key.import_key(k=key_data,kty='oct')
+            except:
+                print >>sys.stderr, 'Failed to correctly parse key data!'
+                return None
+
+        try:
+            token = jwt.JWT(key=key, jwt=token)
+            parsed_header = json.loads(token.header)
+
+            if 'enc' in parsed_header:
+                # Token is encrypted, so we need to decrypt by passing the claims to a new instance
+                token = jwt.JWT(key=key, jwt=token.claims)
+
+            parsed = json.loads(token.claims)
+
+            return (parsed['host'], parsed['port'])
+        except Exception as e:
+            print >>sys.stderr, "Failed to parse token: %s" % (e) 
+            return None
